@@ -128,8 +128,8 @@ function DashboardContent() {
 
       {isEmpty ? (
         <div className="glass-panel" style={{ padding: '60px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>Offline</h2>
-          <p style={{ color: '#6B7280', marginTop: '8px', marginBottom: '24px' }}>Start a review to bring the monitor online.</p>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>You haven’t checked in yet</h2>
+          <p style={{ color: '#6B7280', marginTop: '8px', marginBottom: '24px' }}>Complete your review to see your progress here.</p>
           <Link href="/review">
             <button style={{
               padding: '12px 24px', borderRadius: '999px',
@@ -140,7 +140,7 @@ function DashboardContent() {
               transition: 'all 0.2s',
               boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
             }}>
-              Start weekly review
+              Start review
             </button>
           </Link>
         </div>
