@@ -163,6 +163,9 @@ export default function FinanceCard() {
     const [totalCar, setTotalCar] = useState(0);
     const [totalTravel, setTotalTravel] = useState(0);
 
+    // Savings saved feedback
+    const [savingsSaved, setSavingsSaved] = useState(false);
+
     const [isStored, setIsStored] = useState(false);
 
     // ── Load ──────────────────────────────────────────────────────────────────
