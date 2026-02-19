@@ -315,6 +315,25 @@ export default function FinanceCard() {
 
     const handleSubmit = () => {
         if (!month) return;
+
+        // Validation: Ensure key fields are entered
+        const missingFields = [];
+        if (!month.income) missingFields.push("Base Salary");
+        if (!month.expenses?.rent) missingFields.push("Rent");
+
+        // Utilities
+        if (!month.expenses?.water && month.expenses?.water !== 0) missingFields.push("Water"); // Allow 0 if explicitly entered, but usually bills are > 0. unique logic?
+        // Actually user said explicitly "if ... have not been entered". 
+        // Let's assume > 0 for simplicity as bills usually are cost.
+        if (!month.expenses?.water) missingFields.push("Water");
+        if (!month.expenses?.internet) missingFields.push("Internet");
+        if (!month.expenses?.electricity) missingFields.push("Electricity");
+
+        if (missingFields.length > 0) {
+            alert(`Please enter the following before completing the month:\n- ${missingFields.join('\n- ')}`);
+            return;
+        }
+
         submitMonthlyFinance(month);
         // Advance to next month immediately
         handleNextMonth();
