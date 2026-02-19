@@ -112,7 +112,7 @@ function DashboardContent() {
             letterSpacing: '-0.02em',
             marginTop: '20px'
           }}>
-            Dashboard
+            Dashboard v1.0
           </h1>
           <p style={{
             color: '#6B7280',

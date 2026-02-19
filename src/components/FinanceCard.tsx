@@ -163,13 +163,16 @@ export default function FinanceCard() {
     const [totalCar, setTotalCar] = useState(0);
     const [totalTravel, setTotalTravel] = useState(0);
 
-    // Savings saved feedback
-    const [savingsSaved, setSavingsSaved] = useState(false);
+    const [isStored, setIsStored] = useState(false);
 
     // ── Load ──────────────────────────────────────────────────────────────────
     useEffect(() => {
         const load = () => {
             const data = loadData();
+            const id = date.toISOString().slice(0, 7);
+            const exists = !!data.months[id];
+            setIsStored(exists);
+
             const m = getMonth(data, date);
             setMonth({
                 income: 0,
@@ -301,6 +304,7 @@ export default function FinanceCard() {
     };
 
     const handleNextMonth = () => {
+        if (!isStored) return; // Prevent navigation if current month not started
         const newDate = new Date(date);
         newDate.setMonth(newDate.getMonth() + 1);
         setDate(newDate);
@@ -339,10 +343,12 @@ export default function FinanceCard() {
                         <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Tracking</p>
                         <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827' }}>{formatMonthDisplay(month.month)}</p>
                     </div>
-                    <button onClick={handleNextMonth} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: '1.2rem', color: '#9CA3AF', padding: '4px 8px'
-                    }}>›</button>
+                    {isStored && (
+                        <button onClick={handleNextMonth} style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: '1.2rem', color: '#9CA3AF', padding: '4px 8px'
+                        }}>›</button>
+                    )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {month.submitted && (
@@ -352,34 +358,6 @@ export default function FinanceCard() {
                             border: '1px solid #A7F3D0',
                         }}>✓ Submitted</span>
                     )}
-                    {/* TEMP DEV BUTTON — remove once done testing */}
-                    <button
-                        onClick={() => {
-                            if (!confirm('Reset ' + formatMonthDisplay(month.month) + '? All data for this month will be cleared.')) return;
-                            const raw = localStorage.getItem('weekly_review_data_v1');
-                            if (!raw) return;
-                            const all = JSON.parse(raw);
-                            delete all.months[month.month];
-                            localStorage.setItem('weekly_review_data_v1', JSON.stringify(all));
-                            window.location.reload();
-                        }}
-                        style={{
-                            fontSize: '0.75rem', fontWeight: 600, color: '#9CA3AF',
-                            background: 'none', border: '1px solid #E5E7EB',
-                            borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
-                            transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={e => {
-                            e.currentTarget.style.color = '#EF4444';
-                            e.currentTarget.style.borderColor = '#FECACA';
-                            e.currentTarget.style.background = '#FEF2F2';
-                        }}
-                        onMouseLeave={e => {
-                            e.currentTarget.style.color = '#9CA3AF';
-                            e.currentTarget.style.borderColor = '#E5E7EB';
-                            e.currentTarget.style.background = 'none';
-                        }}
-                    >↺ Reset month</button>
                 </div>
             </div>
 
