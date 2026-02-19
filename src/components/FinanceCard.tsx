@@ -338,10 +338,14 @@ export default function FinanceCard() {
                 background: '#F9FAFB', borderRadius: 12, border: '1px solid #E5E7EB',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <button onClick={handlePrevMonth} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: '1.2rem', color: '#9CA3AF', padding: '4px 8px'
-                    }}>‹</button>
+                    {(date.getFullYear() > 2026 || (date.getFullYear() === 2026 && date.getMonth() > 1)) ? (
+                        <button onClick={handlePrevMonth} style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: '1.2rem', color: '#9CA3AF', padding: '4px 8px'
+                        }}>‹</button>
+                    ) : (
+                        <div style={{ width: 28 }}></div> /* Placeholder to keep alignment */
+                    )}
                     <div>
                         <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Tracking</p>
                         <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827' }}>{formatMonthDisplay(month.month)}</p>
