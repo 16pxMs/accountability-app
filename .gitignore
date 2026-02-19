@@ -1,4 +1,27 @@
 
-node_modules
+# Build artifacts
+.next/
+out/
+build/
+dist/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment
+.env*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
 .DS_Store
 .env
