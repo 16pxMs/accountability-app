@@ -103,6 +103,7 @@ export const getMonth = (data: AppData, date: Date = new Date()): MonthlyData =>
                 personal: exp.personal || 0,
                 social: exp.social || 0,
                 misc: exp.misc || 0,
+                houseKeeping: 0,
             };
         }
         if (existing.expenses) {
@@ -127,6 +128,7 @@ export const getMonth = (data: AppData, date: Date = new Date()): MonthlyData =>
             rent: 0, food: 0, transport: 0,
             water: 0, internet: 0, electricity: 0,
             phone: 0, personal: 0, social: 0, misc: 0,
+            houseKeeping: 0,
         },
         oneOffs: [],
     };
