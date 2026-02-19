@@ -85,10 +85,7 @@ function GoalCard({ title, currentTotal, monthlyAlloc, goal, unit, color, icon, 
             borderRadius: 16, padding: '24px',
             position: 'relative', overflow: 'hidden',
         }}>
-            <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0,
-                height: 4, background: color, borderRadius: '16px 16px 0 0',
-            }} />
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div>
                     <p style={{ fontSize: '0.75rem', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -482,7 +479,7 @@ export default function FinanceCard() {
                     }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#047857')}
                     onMouseLeave={e => (e.currentTarget.style.background = '#059669')}
-                >+ Add Extra Item</button>
+                >Add Extra income</button>
 
                 {/* Income total */}
                 {extraTotal > 0 && (
@@ -509,7 +506,7 @@ export default function FinanceCard() {
                     padding: '10px 0', borderBottom: '1px solid #F3F4F6',
                 }}>
                     <span style={{ width: 20, textAlign: 'center', fontSize: 16 }}>✈️</span>
-                    <span style={{ flex: 1, fontSize: '0.9rem', color: '#4B5563' }}>Travel Buffer</span>
+                    <span style={{ flex: 1, fontSize: '0.9rem', color: '#4B5563' }}>Travel</span>
                     <div style={{ position: 'relative' }}>
                         <input
                             type="number"
@@ -535,8 +532,7 @@ export default function FinanceCard() {
 
                 <div style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    marginTop: 16, paddingTop: 16, borderTop: '2px solid #F3F4F6',
-                    marginBottom: 24,
+                    marginTop: 16, paddingTop: 16, marginBottom: 24,
                 }}>
                     <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>Total saved this month</span>
                     <span style={{ fontSize: '1rem', fontWeight: 800, color: '#111827' }}>KES {fmt(savingsKES)}</span>
@@ -710,7 +706,7 @@ export default function FinanceCard() {
                         <p style={{ fontSize: '0.85rem', color: '#6B7280' }}>Fixed + One-Offs</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                        <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#DC2626' }}>KES {fmt(fixedTotal + oneOffTotal)}</p>
+                        <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827' }}>KES {fmt(fixedTotal + oneOffTotal)}</p>
                     </div>
                 </div>
             </div>

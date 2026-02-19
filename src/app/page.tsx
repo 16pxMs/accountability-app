@@ -112,7 +112,7 @@ function DashboardContent() {
             letterSpacing: '-0.02em',
             marginTop: '20px'
           }}>
-            Dashboard v1.0
+            Dashboard
           </h1>
           <p style={{
             color: '#6B7280',
@@ -124,25 +124,25 @@ function DashboardContent() {
             Track your progress across leverage, health, and wealth. Review weekly outcomes and maintain your standards.
           </p>
         </div>
-        <Link href="/review">
-          <button className="glass-panel" style={{
-            padding: '14px 28px', borderRadius: '999px',
-            background: 'white',
-            color: '#111827',
-            border: '1px solid rgba(0,0,0,0.05)',
-            fontWeight: 700, cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
-          }}>
-            Start weekly review
-          </button>
-        </Link>
       </header>
 
       {isEmpty ? (
         <div className="glass-panel" style={{ padding: '60px', textAlign: 'center' }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>Offline</h2>
-          <p style={{ color: '#6B7280', marginTop: '8px' }}>Start a review to bring the monitor online.</p>
+          <p style={{ color: '#6B7280', marginTop: '8px', marginBottom: '24px' }}>Start a review to bring the monitor online.</p>
+          <Link href="/review">
+            <button style={{
+              padding: '12px 24px', borderRadius: '999px',
+              background: '#111827',
+              color: 'white',
+              border: 'none',
+              fontWeight: 600, cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+            }}>
+              Start weekly review
+            </button>
+          </Link>
         </div>
       ) : (
         <>
