@@ -15,29 +15,24 @@ const DEFAULT_STRATEGY = {
     energy: 0
 };
 
-// Helper to format week display as range
-function formatWeekDisplay(weekId: string): string {
-    const date = new Date(weekId);
+// Helper to format week display — Sunday is the week-ending date
+function formatWeekDisplay(weekId: string): { sundayDate: string; range: string } {
+    // Parse at noon local time to avoid UTC midnight shifting the day boundary
+    const d = new Date(weekId + 'T12:00:00');
+    // Advance to the nearest Sunday on or after the stored date
+    // (handles EAT +3 timezone where midnight Sunday stores as Saturday UTC)
+    while (d.getDay() !== 0) d.setDate(d.getDate() + 1);
 
-    // Get the Monday of this week
-    const dayOfWeek = date.getDay();
-    const diff = date.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // adjust when day is Sunday
-    const monday = new Date(date.setDate(diff));
+    const sunday = new Date(d);
+    const monday = new Date(sunday);
+    monday.setDate(sunday.getDate() - 6);
 
-    // Get the Sunday (6 days after Monday)
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+    const sundayDate = sunday.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+    });
+    const range = `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
-    const formatOptions: Intl.DateTimeFormatOptions = {
-        month: 'short',
-        day: 'numeric'
-    };
-
-    const mondayStr = monday.toLocaleDateString('en-US', formatOptions);
-    const sundayStr = sunday.toLocaleDateString('en-US', formatOptions);
-    const year = sunday.getFullYear();
-
-    return `${mondayStr} to ${sundayStr}, ${year}`;
+    return { sundayDate, range };
 }
 
 export default function CurrentWeek() {
@@ -102,31 +97,43 @@ export default function CurrentWeek() {
                 </p>
 
                 {/* Week Date Display */}
-                <div style={{
-                    marginTop: '16px',
-                    padding: '12px 16px',
-                    background: '#F9FAFB',
-                    borderRadius: '8px',
-                    border: '1px solid #E5E7EB'
-                }}>
-                    <div style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: '#9CA3AF',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        marginBottom: '4px'
-                    }}>
-                        Week that just ended
-                    </div>
-                    <div style={{
-                        fontSize: '1rem',
-                        fontWeight: 700,
-                        color: '#111827'
-                    }}>
-                        {formatWeekDisplay(week.id)}
-                    </div>
-                </div>
+                {(() => {
+                    const { sundayDate, range } = formatWeekDisplay(week.id);
+                    return (
+                        <div style={{
+                            marginTop: '16px',
+                            padding: '14px 18px',
+                            background: '#F9FAFB',
+                            borderRadius: '8px',
+                            border: '1px solid #E5E7EB'
+                        }}>
+                            <div style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                color: '#9CA3AF',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.08em',
+                                marginBottom: '4px'
+                            }}>
+                                Week ending
+                            </div>
+                            <div style={{
+                                fontSize: '1.1rem',
+                                fontWeight: 800,
+                                color: '#111827',
+                                marginBottom: '2px'
+                            }}>
+                                {sundayDate}
+                            </div>
+                            <div style={{
+                                fontSize: '0.8rem',
+                                color: '#9CA3AF',
+                            }}>
+                                {range}
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>

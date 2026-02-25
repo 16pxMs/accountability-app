@@ -41,14 +41,34 @@ export interface WeekData {
     dailyLogs: Record<string, DayData>;
 }
 
-// ── NEW: one-off expense entry ──────────────────────────────────────────────
+// ── one-off expense entry ────────────────────────────────────────────────────
 export interface OneOffExpense {
     id: string;
     label: string;
     amount: number; // KES
 }
 
-// ── NEW: expense breakdown ──────────────────────────────────────────────────
+// ── debt tracking ────────────────────────────────────────────────────────────
+export type DebtType =
+    | 'Credit Card'
+    | 'Mobile Loan'
+    | 'Personal Loan'
+    | 'Car Loan'
+    | 'Student Loan'
+    | 'Business Loan'
+    | 'Mortgage'
+    | 'Other';
+
+export interface DebtEntry {
+    id: string;
+    label: string;           // e.g. "KCB Loan", "Equity Credit Card"
+    type: DebtType;
+    balance: number;         // outstanding balance in KES
+    monthlyPayment: number;  // what you pay this month in KES
+    interestRate: number;    // annual interest rate %
+}
+
+// ── expense breakdown ────────────────────────────────────────────────────────
 export interface MonthlyExpenses {
     rent: number;
     food: number;
@@ -70,16 +90,17 @@ export interface MonthlyData {
     // Existing savings goals (KES / USD)
     emergencyFund: number;  // KES saved this month → emergency goal
     travelFund: number;     // USD saved this month → travel goal
-    carFund?: number;       // KES saved this month → car goal (new)
+    carFund?: number;       // KES saved this month → car goal
 
     submitted?: boolean;
     submittedDate?: string;
 
-    // ── NEW income & expense tracking ──────────────────────────────────────
+    // income & expense tracking
     income?: number;                    // KES base salary
     extraIncome?: OneOffExpense[];      // KES gigs, bonuses, etc.
     expenses?: MonthlyExpenses;
     oneOffs?: OneOffExpense[];
+    debts?: DebtEntry[];                // debt obligations this month
 }
 
 export type MonthlyEntry = MonthlyData;

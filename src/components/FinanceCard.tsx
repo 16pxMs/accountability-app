@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MonthlyData, MonthlyExpenses, OneOffExpense } from '@/lib/types';
+import { MonthlyData, MonthlyExpenses, DebtEntry, DebtType } from '@/lib/types';
 import { loadData, saveMonthlyFinance, submitMonthlyFinance, getMonth, getTotalEmergencyFund, getTotalCarFund, getTotalTravelFund } from '@/lib/storage';
 
 // ── Goal constants ──────────────────────────────────────────────────────────
@@ -180,10 +180,11 @@ export default function FinanceCard() {
                     rent: 0, food: 0, transport: 0,
                     houseKeeping: 0,
                     water: 0, internet: 0, electricity: 0,
-                    phone: 0, personal: 0, social: 0, misc: 0
+                    phone: 0, personal: 0, social: 0, misc: 0,
                 },
                 oneOffs: [],
                 extraIncome: [],
+                debts: [],
                 carFund: 0,
                 ...m,
             });
@@ -218,10 +219,11 @@ export default function FinanceCard() {
         rent: 0, food: 0, transport: 0,
         houseKeeping: 0,
         water: 0, internet: 0, electricity: 0,
-        phone: 0, personal: 0, social: 0, misc: 0
+        phone: 0, personal: 0, social: 0, misc: 0,
     };
     const oneOffs = month.oneOffs ?? [];
     const extraIncome = month.extraIncome ?? [];
+    const debts = month.debts ?? [];
     const baseSalary = month.income ?? 0;
 
     // ── Derived ───────────────────────────────────────────────────────────────
@@ -230,10 +232,52 @@ export default function FinanceCard() {
 
     const fixedTotal = Object.values(expenses).reduce((a, b) => a + b, 0);
     const oneOffTotal = oneOffs.reduce((a, o) => a + o.amount, 0);
+    const debtMonthlyTotal = debts.reduce((a, d) => a + d.monthlyPayment, 0);
     const savingsKES = (month.emergencyFund ?? 0) + (month.carFund ?? 0);
     const savingsUSD = month.travelFund ?? 0;
-    const totalOut = fixedTotal + oneOffTotal + savingsKES + (savingsUSD * KES_TO_USD);
+    const totalOut = fixedTotal + oneOffTotal + debtMonthlyTotal + savingsKES + (savingsUSD * KES_TO_USD);
     const leftover = income - totalOut;
+
+    // ── Debt health assessment ────────────────────────────────────────────────
+    const dti = income > 0 && debtMonthlyTotal > 0 ? (debtMonthlyTotal / income) * 100 : 0;
+    const debtHealth = debtMonthlyTotal > 0 ? (() => {
+        let status: string, statusColor: string, statusBg: string;
+        if (dti < 15)       { status = 'Excellent'; statusColor = '#059669'; statusBg = '#ECFDF5'; }
+        else if (dti < 28)  { status = 'Healthy';   statusColor = '#0EA5E9'; statusBg = '#F0F9FF'; }
+        else if (dti < 36)  { status = 'Caution';   statusColor = '#D97706'; statusBg = '#FFFBEB'; }
+        else if (dti < 50)  { status = 'Warning';   statusColor = '#EA580C'; statusBg = '#FFF7ED'; }
+        else                { status = 'Critical';  statusColor = '#DC2626'; statusBg = '#FEF2F2'; }
+
+        const advice: { type: 'info' | 'warn' | 'danger'; text: string }[] = [];
+
+        if (dti >= 50)
+            advice.push({ type: 'danger', text: `CRITICAL: ${Math.round(dti)}% of your income goes to debt payments. Stop all non-essential spending and seek debt restructuring advice from your bank immediately.` });
+        else if (dti >= 36)
+            advice.push({ type: 'warn', text: `WARNING: Your debt-to-income ratio (${Math.round(dti)}%) is in the danger zone. Lenders consider above 36% high risk. Do not take on any new debt until this is below 30%.` });
+        else if (dti >= 28)
+            advice.push({ type: 'warn', text: `CAUTION: Your DTI of ${Math.round(dti)}% is elevated. Prioritise paying down high-interest debt before building savings goals further.` });
+        else
+            advice.push({ type: 'info', text: `Your debt-to-income ratio is ${Math.round(dti)}% — within a healthy range. Keep up payments and avoid new consumer debt.` });
+
+        const mobileLoans = debts.filter(d => d.type === 'Mobile Loan');
+        if (mobileLoans.length > 0)
+            advice.push({ type: 'danger', text: 'Mobile loans (M-Shwari, Tala, Branch, etc.) carry effective annual rates of 90–180%. These are the most expensive money you can borrow. Pay these off first before everything else — even before saving.' });
+
+        const highRateDebts = debts.filter(d => d.interestRate > 20 && d.type !== 'Mobile Loan');
+        if (highRateDebts.length > 0) {
+            const names = highRateDebts.map(d => d.label || d.type).join(', ');
+            advice.push({ type: 'danger', text: `"${names}" carries interest above 20% p.a. — this is bad debt. Use the Avalanche method: pay minimums on all debts, then throw every extra shilling at the highest-rate debt first.` });
+        }
+
+        const creditCards = debts.filter(d => d.type === 'Credit Card');
+        if (creditCards.length > 0)
+            advice.push({ type: 'warn', text: 'Never carry a credit card balance month to month. The compounding interest erases any rewards benefit. Always pay the full statement balance before the due date.' });
+
+        if (debts.length > 2 && debts.some(d => d.interestRate > 15))
+            advice.push({ type: 'info', text: 'With multiple debts, ask your bank about debt consolidation — a single personal loan at a lower rate can simplify payments and reduce total interest paid.' });
+
+        return { dti, status, statusColor, statusBg, advice, debtTotal: debtMonthlyTotal };
+    })() : null;
 
     const emergencyWithThis = totalEmergency + (month.emergencyFund ?? 0);
     const carWithThis = totalCar + (month.carFund ?? 0);
@@ -241,6 +285,7 @@ export default function FinanceCard() {
 
     const breakdownItems: { label: string; value: number; color: string }[] = [
         { label: 'Rent', value: expenses.rent, color: '#F87171' },
+        ...debts.filter(d => d.monthlyPayment > 0).map(d => ({ label: d.label || d.type, value: d.monthlyPayment, color: '#EF4444' })),
         { label: 'Food', value: expenses.food, color: '#FB923C' },
         { label: 'Transport', value: expenses.transport, color: '#FBBF24' },
         { label: 'House Keeping', value: expenses.houseKeeping, color: '#A78BFA' },
@@ -296,6 +341,17 @@ export default function FinanceCard() {
         const updated = { ...month, extraIncome: extraIncome.filter(e => e.id !== id) };
         persist(updated);
     };
+
+    const addDebt = () => persist({
+        ...month,
+        debts: [...debts, { id: Date.now().toString(), label: '', type: 'Personal Loan' as DebtType, balance: 0, monthlyPayment: 0, interestRate: 0 }],
+    });
+
+    const updateDebt = (id: string, field: keyof DebtEntry, value: string | number) =>
+        persist({ ...month, debts: debts.map(d => d.id === id ? { ...d, [field]: value } : d) });
+
+    const removeDebt = (id: string) =>
+        persist({ ...month, debts: debts.filter(d => d.id !== id) });
 
     const handlePrevMonth = () => {
         const newDate = new Date(date);
@@ -619,6 +675,180 @@ export default function FinanceCard() {
                 <ExpenseRow label="Miscellaneous" icon="📦" value={expenses.misc} onChange={v => updateExpense('misc', v)} />
             </div>
 
+            {/* ── 3.5 DEBT TRACKER ──────────────────────────────────────────── */}
+            <div style={{ background: 'white', border: '2px solid #FEE2E2', borderRadius: 16, padding: 28, marginBottom: 20 }}>
+                <SectionHeader title="Debt Tracker" />
+
+                {debts.length === 0 && (
+                    <p style={{ fontSize: '0.85rem', color: '#9CA3AF', marginBottom: 16, fontStyle: 'italic' }}>
+                        No debts tracked this month. Add any loans, credit cards, or mobile loans below.
+                    </p>
+                )}
+
+                {debts.map((d) => (
+                    <div key={d.id} style={{ border: '1px solid #FEE2E2', borderRadius: 12, padding: 16, marginBottom: 12, background: '#FFFBFB' }}>
+                        {/* Name + Type + Remove */}
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center' }}>
+                            <span style={{ fontSize: 18 }}>💳</span>
+                            <input
+                                value={d.label}
+                                placeholder="Debt name (e.g. KCB Loan)"
+                                onChange={ev => updateDebt(d.id, 'label', ev.target.value)}
+                                style={{ flex: 1, padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: '0.9rem', color: '#111827', outline: 'none' }}
+                                onFocus={ev => ev.target.style.borderColor = '#EF4444'}
+                                onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                            />
+                            <select
+                                value={d.type}
+                                onChange={ev => updateDebt(d.id, 'type', ev.target.value)}
+                                style={{ padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: '0.85rem', color: '#374151', background: 'white', cursor: 'pointer', outline: 'none' }}
+                            >
+                                <option>Credit Card</option>
+                                <option>Mobile Loan</option>
+                                <option>Personal Loan</option>
+                                <option>Car Loan</option>
+                                <option>Student Loan</option>
+                                <option>Business Loan</option>
+                                <option>Mortgage</option>
+                                <option>Other</option>
+                            </select>
+                            <button
+                                onClick={() => removeDebt(d.id)}
+                                style={{ background: 'none', border: 'none', color: '#D1D5DB', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
+                                onMouseEnter={ev => (ev.currentTarget.style.color = '#EF4444')}
+                                onMouseLeave={ev => (ev.currentTarget.style.color = '#D1D5DB')}
+                            >×</button>
+                        </div>
+
+                        {/* Three numeric fields */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                            {/* Outstanding Balance */}
+                            <div>
+                                <p style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Outstanding Balance</p>
+                                <p style={{ fontSize: '0.65rem', color: '#D1D5DB', marginBottom: 4 }}>tracking only</p>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type="number" value={d.balance || ''} placeholder="0"
+                                        onChange={ev => updateDebt(d.id, 'balance', Number(ev.target.value))}
+                                        style={{ width: '100%', padding: '8px 40px 8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: '0.9rem', fontWeight: 600, color: '#111827', outline: 'none', textAlign: 'right', boxSizing: 'border-box' }}
+                                        onFocus={ev => ev.target.style.borderColor = '#EF4444'}
+                                        onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                                    />
+                                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: '#9CA3AF', pointerEvents: 'none' }}>KES</span>
+                                </div>
+                            </div>
+
+                            {/* Monthly Payment */}
+                            <div>
+                                <p style={{ fontSize: '0.68rem', color: '#DC2626', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Monthly Payment</p>
+                                <p style={{ fontSize: '0.65rem', color: '#DC2626', opacity: 0.6, marginBottom: 4 }}>affects budget & breakdown</p>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type="number" value={d.monthlyPayment || ''} placeholder="0"
+                                        onChange={ev => updateDebt(d.id, 'monthlyPayment', Number(ev.target.value))}
+                                        style={{ width: '100%', padding: '8px 40px 8px 10px', border: `2px solid ${d.monthlyPayment === 0 ? '#FCA5A5' : '#EF4444'}`, borderRadius: 8, fontSize: '0.9rem', fontWeight: 600, color: '#DC2626', outline: 'none', textAlign: 'right', boxSizing: 'border-box' }}
+                                        onFocus={ev => ev.target.style.borderColor = '#EF4444'}
+                                        onBlur={ev => ev.target.style.borderColor = d.monthlyPayment === 0 ? '#FCA5A5' : '#EF4444'}
+                                    />
+                                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: '#9CA3AF', pointerEvents: 'none' }}>KES</span>
+                                </div>
+                            </div>
+
+                            {/* Interest Rate */}
+                            <div>
+                                <p style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Interest Rate p.a.</p>
+                                <p style={{ fontSize: '0.65rem', color: '#D1D5DB', marginBottom: 4 }}>for health assessment</p>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type="number" value={d.interestRate || ''} placeholder="0"
+                                        onChange={ev => updateDebt(d.id, 'interestRate', Number(ev.target.value))}
+                                        style={{ width: '100%', padding: '8px 28px 8px 10px', border: `1px solid ${d.interestRate > 20 ? '#FCA5A5' : '#E5E7EB'}`, borderRadius: 8, fontSize: '0.9rem', fontWeight: 600, color: d.interestRate > 20 ? '#DC2626' : '#111827', outline: 'none', textAlign: 'right', boxSizing: 'border-box' }}
+                                        onFocus={ev => ev.target.style.borderColor = '#EF4444'}
+                                        onBlur={ev => ev.target.style.borderColor = d.interestRate > 20 ? '#FCA5A5' : '#E5E7EB'}
+                                    />
+                                    <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: '#9CA3AF', pointerEvents: 'none' }}>%</span>
+                                </div>
+                                {d.interestRate > 20 && (
+                                    <p style={{ fontSize: '0.7rem', color: '#DC2626', marginTop: 3, fontWeight: 600 }}>⚠ High interest</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Warning when monthly payment is not set */}
+                        {d.monthlyPayment === 0 && (
+                            <div style={{ marginTop: 10, padding: '8px 12px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 14 }}>⚠️</span>
+                                <p style={{ fontSize: '0.78rem', color: '#92400E', margin: 0 }}>
+                                    Monthly payment is 0 — this debt won't appear in your budget or spending breakdown until you set it.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                ))}
+
+                <button
+                    onClick={addDebt}
+                    style={{ marginTop: 4, padding: '9px 18px', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', transition: 'all 0.2s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#FEE2E2'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#FEF2F2'; }}
+                >+ Add Debt</button>
+
+                {/* ── Debt Health Assessment ── */}
+                {debtHealth && (
+                    <div style={{ marginTop: 24, borderTop: '2px solid #FEE2E2', paddingTop: 20 }}>
+
+                        {/* DTI banner */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, background: debtHealth.statusBg, border: `1px solid ${debtHealth.statusColor}40`, borderRadius: 12, padding: '16px 20px' }}>
+                            <div style={{ minWidth: 110 }}>
+                                <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Debt-to-Income</p>
+                                <p style={{ fontSize: '2.2rem', fontWeight: 900, color: debtHealth.statusColor, lineHeight: 1 }}>{Math.round(debtHealth.dti)}%</p>
+                                <p style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 3 }}>KES {fmt(debtHealth.debtTotal)}/mo in payments</p>
+                            </div>
+
+                            {/* Gauge bar */}
+                            <div style={{ flex: 1 }}>
+                                <div style={{ position: 'relative', height: 10, background: 'linear-gradient(to right, #10B981 0%, #FBBF24 56%, #EF4444 100%)', borderRadius: 99 }}>
+                                    <div style={{
+                                        position: 'absolute',
+                                        left: `${Math.min(debtHealth.dti * 2, 98)}%`,
+                                        top: '50%', transform: 'translate(-50%, -50%)',
+                                        width: 16, height: 16, background: 'white',
+                                        border: `3px solid ${debtHealth.statusColor}`,
+                                        borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                                    }} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+                                    <span style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 600 }}>0% Excellent</span>
+                                    <span style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 600 }}>28% Caution</span>
+                                    <span style={{ fontSize: '0.68rem', color: '#EF4444', fontWeight: 600 }}>50%+ Critical</span>
+                                </div>
+                            </div>
+
+                            <div style={{ textAlign: 'center', background: debtHealth.statusColor, color: 'white', padding: '8px 14px', borderRadius: 10, fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
+                                {debtHealth.status}
+                            </div>
+                        </div>
+
+                        {/* Advice cards */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {debtHealth.advice.map((a, i) => (
+                                <div key={i} style={{
+                                    display: 'flex', gap: 12, alignItems: 'flex-start',
+                                    padding: '12px 16px', borderRadius: 10,
+                                    background: a.type === 'danger' ? '#FEF2F2' : a.type === 'warn' ? '#FFFBEB' : '#F0F9FF',
+                                    border: `1px solid ${a.type === 'danger' ? '#FECACA' : a.type === 'warn' ? '#FDE68A' : '#BAE6FD'}`,
+                                }}>
+                                    <span style={{ fontSize: 18, flexShrink: 0 }}>
+                                        {a.type === 'danger' ? '🚨' : a.type === 'warn' ? '⚠️' : '💡'}
+                                    </span>
+                                    <p style={{ fontSize: '0.85rem', color: '#374151', lineHeight: 1.55, margin: 0 }}>{a.text}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {/* ── 4. ONE-OFF EXPENSES ───────────────────────────────────────── */}
             <div style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 16, padding: 28, marginBottom: 20 }}>
                 <SectionHeader title="One-Off Expenses (Visa, Insurance, etc.)" />
@@ -700,13 +930,27 @@ export default function FinanceCard() {
 
             {/* ── 4.5 TOTAL EXPENSES ────────────────────────────────────────── */}
             <div style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 16, padding: 24, marginBottom: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                        <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Total Monthly Expenses</p>
-                        <p style={{ fontSize: '0.85rem', color: '#6B7280' }}>Fixed + One-Offs</p>
+                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>Total Monthly Expenses</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.88rem', color: '#6B7280' }}>Fixed expenses</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#111827' }}>KES {fmt(fixedTotal)}</span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                        <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827' }}>KES {fmt(fixedTotal + oneOffTotal)}</p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.88rem', color: debtMonthlyTotal > 0 ? '#DC2626' : '#6B7280' }}>Debt payments</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: debtMonthlyTotal > 0 ? '#DC2626' : '#9CA3AF' }}>
+                            {debtMonthlyTotal > 0 ? `KES ${fmt(debtMonthlyTotal)}` : '—'}
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.88rem', color: '#6B7280' }}>One-off expenses</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: oneOffTotal > 0 ? '#111827' : '#9CA3AF' }}>
+                            {oneOffTotal > 0 ? `KES ${fmt(oneOffTotal)}` : '—'}
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '2px solid #F3F4F6', marginTop: 2 }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>Total</span>
+                        <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827' }}>KES {fmt(fixedTotal + debtMonthlyTotal + oneOffTotal)}</span>
                     </div>
                 </div>
             </div>
