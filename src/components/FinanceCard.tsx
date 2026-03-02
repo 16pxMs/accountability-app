@@ -1253,20 +1253,37 @@ export default function FinanceCard() {
                         )}
 
                         {/* — Fixed Costs — */}
-                        {fixedBreakdownItems.length > 0 && (
+                        {fixedBreakdownItems.filter(item => !debts.some(d => (d.label || d.type) === item.label)).length > 0 && (
                             <div style={{ marginBottom: 24 }}>
                                 <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Fixed Costs</p>
-                                {fixedBreakdownItems.map((item, i) => (
+                                {fixedBreakdownItems
+                                    .filter(item => !debts.some(d => (d.label || d.type) === item.label))
+                                    .map((item, i) => (
+                                        <div key={i} style={{ marginBottom: 12 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                <span style={{ fontSize: '0.85rem', color: '#4B5563' }}>{item.label}</span>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>KES {fmt(item.value)}</span>
+                                            </div>
+                                            <div style={{ height: 6, background: '#F3F4F6', borderRadius: 99, overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${(item.value / maxFixed) * 100}%`, background: item.color, borderRadius: 99 }} />
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+
+                        {/* — Debt Payments (New Section) — */}
+                        {debts.filter(d => d.monthlyPayment > 0).length > 0 && (
+                            <div style={{ marginBottom: 24 }}>
+                                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Debt Payments</p>
+                                {debts.filter(d => d.monthlyPayment > 0).map((d, i) => (
                                     <div key={i} style={{ marginBottom: 12 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                            <span style={{ fontSize: '0.85rem', color: '#4B5563' }}>{item.label}</span>
-                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
-                                                KES {fmt(item.value)}
-                                                {income > 0 && <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6 }}>{Math.round((item.value / income) * 100)}%</span>}
-                                            </span>
+                                            <span style={{ fontSize: '0.85rem', color: '#4B5563' }}>{d.label || d.type}</span>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#DC2626' }}>KES {fmt(d.monthlyPayment)}</span>
                                         </div>
-                                        <div style={{ height: 6, background: '#F3F4F6', borderRadius: 99, overflow: 'hidden' }}>
-                                            <div style={{ height: '100%', width: `${(item.value / maxFixed) * 100}%`, background: item.color, borderRadius: 99, transition: 'width 0.3s ease' }} />
+                                        <div style={{ height: 6, background: '#FEE2E2', borderRadius: 99, overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${(d.monthlyPayment / maxFixed) * 100}%`, background: '#EF4444', borderRadius: 99 }} />
                                         </div>
                                     </div>
                                 ))}
