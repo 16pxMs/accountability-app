@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MonthlyData, MonthlyExpenses, DebtEntry, DebtType } from '@/lib/types';
+import { MonthlyData, MonthlyExpenses, DebtEntry, DebtType, BudgetEntry, BudgetLineItem } from '@/lib/types';
 import { loadData, saveMonthlyFinance, submitMonthlyFinance, getMonth, getTotalEmergencyFund, getTotalCarFund, getTotalTravelFund } from '@/lib/storage';
 
 // ── Goal constants ──────────────────────────────────────────────────────────
@@ -10,6 +10,12 @@ const EMERGENCY_GOAL_KES = 1_350_000;
 const CAR_GOAL_KES = 1_500_000;
 const TRAVEL_GOAL_USD = 1_500;
 const KES_TO_USD = 130;
+
+// ── Budget category presets (for datalist autocomplete) ──────────────────────
+const BUDGET_CATEGORY_PRESETS = [
+    'Food & Groceries', 'Transport', 'Personal & Clothing',
+    'Social & Entertainment', 'Miscellaneous',
+];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => Math.round(n).toLocaleString('en-KE');
@@ -69,6 +75,7 @@ function ExpenseRow({ label, icon, value, onChange, unit = 'KES' }: {
         </div>
     );
 }
+
 
 function GoalCard({ title, currentTotal, monthlyAlloc, goal, unit, color, icon, milestone }: {
     title: string; currentTotal: number; monthlyAlloc: number;
@@ -230,12 +237,21 @@ export default function FinanceCard() {
     const extraTotal = extraIncome.reduce((a: number, e: any) => a + e.amount, 0);
     const income = baseSalary + extraTotal;
 
-    const fixedTotal = Object.values(expenses).reduce((a, b) => a + b, 0);
+    // Fixed costs: only truly fixed items (variable categories tracked in Flexible Budgets)
+    const FIXED_KEYS: (keyof MonthlyExpenses)[] = ['rent', 'houseKeeping', 'water', 'internet', 'electricity', 'phone'];
+    const fixedTotal = FIXED_KEYS.reduce((a, k) => a + (expenses[k] ?? 0), 0);
+
+    // Migrate old data: ensure every entry has an items array
+    const budgets: BudgetEntry[] = (month.budgets ?? []).map(b => ({
+        ...b,
+        items: (b as any).items ?? [],
+    }));
+    const budgetTotal = budgets.reduce((a, b) => a + b.items.reduce((s, it) => s + it.amount, 0), 0);
     const oneOffTotal = oneOffs.reduce((a, o) => a + o.amount, 0);
     const debtMonthlyTotal = debts.reduce((a, d) => a + d.monthlyPayment, 0);
     const savingsKES = (month.emergencyFund ?? 0) + (month.carFund ?? 0);
     const savingsUSD = month.travelFund ?? 0;
-    const totalOut = fixedTotal + oneOffTotal + debtMonthlyTotal + savingsKES + (savingsUSD * KES_TO_USD);
+    const totalOut = fixedTotal + budgetTotal + oneOffTotal + debtMonthlyTotal + savingsKES + (savingsUSD * KES_TO_USD);
     const leftover = income - totalOut;
 
     // ── Debt health assessment ────────────────────────────────────────────────
@@ -283,23 +299,18 @@ export default function FinanceCard() {
     const carWithThis = totalCar + (month.carFund ?? 0);
     const travelWithThis = totalTravel + (month.travelFund ?? 0);
 
-    const breakdownItems: { label: string; value: number; color: string }[] = [
+    // Fixed costs only (variable categories go into the categorical budget section)
+    const fixedBreakdownItems: { label: string; value: number; color: string }[] = [
         { label: 'Rent', value: expenses.rent, color: '#F87171' },
-        ...debts.filter(d => d.monthlyPayment > 0).map(d => ({ label: d.label || d.type, value: d.monthlyPayment, color: '#EF4444' })),
-        { label: 'Food', value: expenses.food, color: '#FB923C' },
-        { label: 'Transport', value: expenses.transport, color: '#FBBF24' },
         { label: 'House Keeping', value: expenses.houseKeeping, color: '#A78BFA' },
         { label: 'Water', value: expenses.water, color: '#34D399' },
         { label: 'Internet', value: expenses.internet, color: '#22D3EE' },
         { label: 'Electricity', value: expenses.electricity, color: '#6EE7B7' },
         { label: 'Phone & Subs', value: expenses.phone, color: '#818CF8' },
-        { label: 'Personal', value: expenses.personal, color: '#C084FC' },
-        { label: 'Social', value: expenses.social, color: '#F472B6' },
-        { label: 'Misc', value: expenses.misc, color: '#94A3B8' },
-        ...oneOffs.map(o => ({ label: o.label, value: o.amount, color: '#FB923C' })),
+        ...debts.filter(d => d.monthlyPayment > 0).map(d => ({ label: d.label || d.type, value: d.monthlyPayment, color: '#EF4444' })),
     ].filter(i => i.value > 0).sort((a, b) => b.value - a.value);
 
-    const maxExpense = Math.max(...breakdownItems.map(i => i.value), 1);
+    const maxFixed = Math.max(...fixedBreakdownItems.map(i => i.value), 1);
 
     // ── Update helpers ────────────────────────────────────────────────────────
     const updateExpense = (field: keyof MonthlyExpenses, val: number) =>
@@ -312,12 +323,45 @@ export default function FinanceCard() {
         });
     };
 
-    const updateOneOff = (id: string, field: 'label' | 'amount', value: string | number) => {
+    const addBudget = () => persist({
+        ...month,
+        budgets: [...budgets, { id: Date.now().toString(), category: '', limit: 0, items: [] }],
+    });
+
+    const updateBudget = (id: string, field: 'category' | 'limit', value: string | number) =>
+        persist({ ...month, budgets: budgets.map(b => b.id === id ? { ...b, [field]: value } : b) });
+
+    const removeBudget = (id: string) =>
+        persist({ ...month, budgets: budgets.filter(b => b.id !== id) });
+
+    const addBudgetItem = (budgetId: string) => {
+        const newItem: BudgetLineItem = { id: Date.now().toString(), label: '', amount: 0 };
         persist({
             ...month,
-            oneOffs: oneOffs.map(o => o.id === id ? { ...o, [field]: value } : o)
+            budgets: budgets.map(b => b.id === budgetId ? { ...b, items: [...b.items, newItem] } : b),
         });
     };
+
+    const updateBudgetItem = (budgetId: string, itemId: string, field: 'label' | 'amount', value: string | number) =>
+        persist({
+            ...month,
+            budgets: budgets.map(b =>
+                b.id === budgetId
+                    ? { ...b, items: b.items.map(it => it.id === itemId ? { ...it, [field]: value } : it) }
+                    : b
+            ),
+        });
+
+    const removeBudgetItem = (budgetId: string, itemId: string) =>
+        persist({
+            ...month,
+            budgets: budgets.map(b =>
+                b.id === budgetId ? { ...b, items: b.items.filter(it => it.id !== itemId) } : b
+            ),
+        });
+
+    const updateOneOff = (id: string, field: 'label' | 'amount', value: string | number) =>
+        persist({ ...month, oneOffs: oneOffs.map(o => o.id === id ? { ...o, [field]: value } : o) });
 
     const removeOneOff = (id: string) =>
         persist({ ...month, oneOffs: oneOffs.filter(o => o.id !== id) });
@@ -649,7 +693,6 @@ export default function FinanceCard() {
                 <SectionHeader title="Fixed Monthly Expenses" />
                 <ExpenseRow label="Rent" icon="🏠" value={expenses.rent} onChange={v => updateExpense('rent', v)} />
                 <ExpenseRow label="House Keeping" icon="🧹" value={expenses.houseKeeping} onChange={v => updateExpense('houseKeeping', v)} />
-                <ExpenseRow label="Food & Groceries" icon="🛒" value={expenses.food} onChange={v => updateExpense('food', v)} />
 
                 {/* Utilities subsection */}
                 <div style={{ margin: '8px 0 0' }}>
@@ -669,13 +712,175 @@ export default function FinanceCard() {
                 </div>
 
                 <ExpenseRow label="Phone & Subscriptions" icon="📱" value={expenses.phone} onChange={v => updateExpense('phone', v)} />
-                <ExpenseRow label="Transport" icon="🚗" value={expenses.transport} onChange={v => updateExpense('transport', v)} />
-                <ExpenseRow label="Personal & Clothing" icon="👕" value={expenses.personal} onChange={v => updateExpense('personal', v)} />
-                <ExpenseRow label="Social & Entertainment" icon="🎉" value={expenses.social} onChange={v => updateExpense('social', v)} />
-                <ExpenseRow label="Miscellaneous" icon="📦" value={expenses.misc} onChange={v => updateExpense('misc', v)} />
             </div>
 
-            {/* ── 3.5 DEBT TRACKER ──────────────────────────────────────────── */}
+            {/* ── 3.5 FLEXIBLE BUDGETS ──────────────────────────────────────── */}
+            <div style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 16, padding: 28, marginBottom: 20 }}>
+                <SectionHeader title="Flexible Budgets" />
+                <p style={{ fontSize: '0.82rem', color: '#6B7280', marginBottom: 16 }}>
+                    Track variable spending categories with a monthly limit. Use this for Food, Transport, Personal, Social, and Miscellaneous.
+                </p>
+
+                {/* shared datalist for category autocomplete */}
+                {(() => {
+                    const customCats = budgets
+                        .map(b => b.category.trim())
+                        .filter(c => c && !BUDGET_CATEGORY_PRESETS.includes(c));
+                    const allOptions = [...BUDGET_CATEGORY_PRESETS, ...Array.from(new Set(customCats))];
+                    return (
+                        <datalist id="budget-category-list">
+                            {allOptions.map(opt => <option key={opt} value={opt} />)}
+                        </datalist>
+                    );
+                })()}
+
+                {budgets.map(b => {
+                    const spentTotal = b.items.reduce((s, it) => s + it.amount, 0);
+                    const hasLimit = b.limit > 0;
+                    const pct = hasLimit ? Math.min((spentTotal / b.limit) * 100, 100) : 0;
+                    const over = hasLimit && spentTotal > b.limit;
+                    const near = hasLimit && !over && pct >= 80;
+                    const barColor = over ? '#DC2626' : near ? '#D97706' : '#10B981';
+
+                    return (
+                        <div key={b.id} style={{ border: '1px solid #E5E7EB', borderRadius: 12, padding: 18, marginBottom: 14, background: '#FAFAFA' }}>
+
+                            {/* Category name (free-text + datalist) + remove */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                                <input
+                                    type="text"
+                                    list="budget-category-list"
+                                    value={b.category}
+                                    placeholder="Category name…"
+                                    onChange={ev => updateBudget(b.id, 'category', ev.target.value)}
+                                    style={{
+                                        flex: 1, padding: '8px 12px',
+                                        border: '1px solid #E5E7EB', borderRadius: 8,
+                                        fontSize: '0.95rem', fontWeight: 700, color: '#111827',
+                                        outline: 'none', background: 'white',
+                                    }}
+                                    onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
+                                    onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                                />
+                                <button
+                                    onClick={() => removeBudget(b.id)}
+                                    style={{ background: 'none', border: 'none', color: '#D1D5DB', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px' }}
+                                    onMouseEnter={ev => (ev.currentTarget.style.color = '#EF4444')}
+                                    onMouseLeave={ev => (ev.currentTarget.style.color = '#D1D5DB')}
+                                >×</button>
+                            </div>
+
+                            {/* Budget Limit (left) | Total Spent auto-sum (right) */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                                {/* LEFT — Limit input */}
+                                <div>
+                                    <p style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Budget Limit</p>
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type="number"
+                                            value={b.limit || ''}
+                                            placeholder="Set limit"
+                                            onChange={ev => updateBudget(b.id, 'limit', Number(ev.target.value) || 0)}
+                                            style={{ width: '100%', padding: '8px 40px 8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: '0.9rem', fontWeight: 600, color: '#111827', outline: 'none', textAlign: 'right', boxSizing: 'border-box', background: 'white' }}
+                                            onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
+                                            onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                                        />
+                                        <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: '#9CA3AF', pointerEvents: 'none' }}>KES</span>
+                                    </div>
+                                </div>
+                                {/* RIGHT — Total Spent (read-only, auto-summed) */}
+                                <div>
+                                    <p style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Total Spent</p>
+                                    <div style={{
+                                        padding: '8px 12px', borderRadius: 8, textAlign: 'right',
+                                        border: `1px solid ${over ? '#FCA5A5' : '#E5E7EB'}`,
+                                        background: over ? '#FEF2F2' : '#F3F4F6',
+                                        fontSize: '0.9rem', fontWeight: 700,
+                                        color: over ? '#DC2626' : spentTotal > 0 ? '#111827' : '#9CA3AF',
+                                    }}>
+                                        {spentTotal > 0 ? `KES ${fmt(spentTotal)}` : '—'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            {hasLimit && (
+                                <div style={{ marginBottom: 14 }}>
+                                    <div style={{ height: 6, background: '#E5E7EB', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
+                                        <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 99, transition: 'width 0.3s ease' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>
+                                            {over
+                                                ? <span style={{ color: '#DC2626', fontWeight: 700 }}>Over by KES {fmt(spentTotal - b.limit)}</span>
+                                                : `KES ${fmt(b.limit - spentTotal)} remaining`}
+                                        </span>
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: barColor }}>{Math.round(pct)}%</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Individual expense line items */}
+                            <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 12 }}>
+                                {b.items.map(item => (
+                                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#D1D5DB', flexShrink: 0 }} />
+                                        <input
+                                            type="text"
+                                            value={item.label}
+                                            placeholder="Description"
+                                            onChange={ev => updateBudgetItem(b.id, item.id, 'label', ev.target.value)}
+                                            style={{ flex: 1, padding: '6px 10px', border: '1px solid #E5E7EB', borderRadius: 7, fontSize: '0.85rem', color: '#374151', outline: 'none', background: 'white' }}
+                                            onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
+                                            onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                                        />
+                                        <div style={{ position: 'relative' }}>
+                                            <input
+                                                type="number"
+                                                value={item.amount || ''}
+                                                placeholder="0"
+                                                onChange={ev => updateBudgetItem(b.id, item.id, 'amount', Number(ev.target.value) || 0)}
+                                                style={{ width: 110, padding: '6px 36px 6px 8px', border: '1px solid #E5E7EB', borderRadius: 7, fontSize: '0.85rem', fontWeight: 600, color: '#111827', outline: 'none', textAlign: 'right', background: 'white' }}
+                                                onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
+                                                onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                                            />
+                                            <span style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', fontSize: '0.65rem', color: '#9CA3AF', pointerEvents: 'none' }}>KES</span>
+                                        </div>
+                                        <button
+                                            onClick={() => removeBudgetItem(b.id, item.id)}
+                                            style={{ background: 'none', border: 'none', color: '#D1D5DB', cursor: 'pointer', fontSize: 16, padding: '0 2px', lineHeight: 1 }}
+                                            onMouseEnter={ev => (ev.currentTarget.style.color = '#EF4444')}
+                                            onMouseLeave={ev => (ev.currentTarget.style.color = '#D1D5DB')}
+                                        >×</button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={() => addBudgetItem(b.id)}
+                                    style={{ marginTop: 4, padding: '6px 14px', background: 'white', color: '#6B7280', border: '1px dashed #D1D5DB', borderRadius: 7, fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem', width: '100%', transition: 'all 0.15s' }}
+                                    onMouseEnter={ev => { ev.currentTarget.style.background = '#F9FAFB'; ev.currentTarget.style.borderColor = '#9CA3AF'; }}
+                                    onMouseLeave={ev => { ev.currentTarget.style.background = 'white'; ev.currentTarget.style.borderColor = '#D1D5DB'; }}
+                                >+ Add expense</button>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                <button
+                    onClick={addBudget}
+                    style={{ marginTop: 4, padding: '9px 18px', background: '#F0F9FF', color: '#0EA5E9', border: '1px solid #BAE6FD', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', transition: 'all 0.2s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#E0F2FE'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#F0F9FF'; }}
+                >+ Add Budget Category</button>
+
+                {budgetTotal > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, paddingTop: 16, borderTop: '2px solid #F3F4F6' }}>
+                        <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>Total budget spend</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 800, color: '#111827' }}>KES {fmt(budgetTotal)}</span>
+                    </div>
+                )}
+            </div>
+
+            {/* ── 3.8 DEBT TRACKER ──────────────────────────────────────────── */}
             <div style={{ background: 'white', border: '2px solid #FEE2E2', borderRadius: 16, padding: 28, marginBottom: 20 }}>
                 <SectionHeader title="Debt Tracker" />
 
@@ -855,52 +1060,53 @@ export default function FinanceCard() {
 
                 {oneOffs.map(o => (
                     <div key={o.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
                         padding: '10px 0', borderBottom: '1px solid #F3F4F6',
                     }}>
-                        <span style={{ fontSize: 16 }}>⚡</span>
-                        <input
-                            value={o.label}
-                            placeholder="Label"
-                            onChange={ev => updateOneOff(o.id, 'label', ev.target.value)}
-                            style={{
-                                flex: 1, padding: '8px 12px',
-                                border: '1px solid #E5E7EB', borderRadius: 8,
-                                fontSize: '0.9rem', color: '#111827', outline: 'none',
-                            }}
-                            onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
-                            onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
-                        />
-                        <div style={{ position: 'relative' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 16 }}>⚡</span>
                             <input
-                                type="number"
-                                value={o.amount || ''}
-                                placeholder="0"
-                                onChange={ev => updateOneOff(o.id, 'amount', Number(ev.target.value))}
+                                value={o.label}
+                                placeholder="Label"
+                                onChange={ev => updateOneOff(o.id, 'label', ev.target.value)}
                                 style={{
-                                    width: 120, padding: '8px 44px 8px 10px',
+                                    flex: 1, padding: '8px 12px',
                                     border: '1px solid #E5E7EB', borderRadius: 8,
-                                    fontSize: '0.9rem', color: '#111827', fontWeight: 700,
-                                    outline: 'none', textAlign: 'right',
+                                    fontSize: '0.9rem', color: '#111827', outline: 'none',
                                 }}
                                 onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
                                 onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
                             />
-                            <span style={{
-                                position: 'absolute', right: 10, top: '50%',
-                                transform: 'translateY(-50%)',
-                                fontSize: '0.7rem', color: '#9CA3AF', pointerEvents: 'none',
-                            }}>KES</span>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type="number"
+                                    value={o.amount || ''}
+                                    placeholder="0"
+                                    onChange={ev => updateOneOff(o.id, 'amount', Number(ev.target.value))}
+                                    style={{
+                                        width: 110, padding: '8px 40px 8px 10px',
+                                        border: '1px solid #E5E7EB', borderRadius: 8,
+                                        fontSize: '0.9rem', color: '#111827', fontWeight: 700,
+                                        outline: 'none', textAlign: 'right',
+                                    }}
+                                    onFocus={ev => ev.target.style.borderColor = '#3B82F6'}
+                                    onBlur={ev => ev.target.style.borderColor = '#E5E7EB'}
+                                />
+                                <span style={{
+                                    position: 'absolute', right: 8, top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    fontSize: '0.7rem', color: '#9CA3AF', pointerEvents: 'none',
+                                }}>KES</span>
+                            </div>
+                            <button
+                                onClick={() => removeOneOff(o.id)}
+                                style={{
+                                    background: 'none', border: 'none', color: '#D1D5DB',
+                                    cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px',
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                                onMouseLeave={e => (e.currentTarget.style.color = '#D1D5DB')}
+                            >×</button>
                         </div>
-                        <button
-                            onClick={() => removeOneOff(o.id)}
-                            style={{
-                                background: 'none', border: 'none', color: '#D1D5DB',
-                                cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
-                            onMouseLeave={e => (e.currentTarget.style.color = '#D1D5DB')}
-                        >×</button>
                     </div>
                 ))}
 
@@ -985,32 +1191,92 @@ export default function FinanceCard() {
             </div>
 
             {/* ── 6. SPENDING BREAKDOWN ─────────────────────────────────────── */}
-            {breakdownItems.length > 0 && (
-                <div style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 16, padding: 28, marginBottom: 20 }}>
-                    <SectionHeader title="Spending Breakdown" />
-                    {breakdownItems.map((item, i) => (
-                        <div key={i} style={{ marginBottom: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                <span style={{ fontSize: '0.85rem', color: '#4B5563' }}>{item.label}</span>
-                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
-                                    KES {fmt(item.value)}
-                                    {income > 0 && (
-                                        <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6 }}>
-                                            {Math.round((item.value / income) * 100)}%
-                                        </span>
-                                    )}
-                                </span>
+            {(() => {
+                const hasAnyData = budgets.length > 0 || fixedBreakdownItems.length > 0 || oneOffs.some(o => o.amount > 0);
+                if (!hasAnyData) return null;
+
+                return (
+                    <div style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 16, padding: 28, marginBottom: 20 }}>
+                        <SectionHeader title="Spending Breakdown" />
+
+                        {/* — Flexible Budgets — */}
+                        {budgets.length > 0 && (
+                            <div style={{ marginBottom: 24 }}>
+                                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Flexible Budgets</p>
+                                {budgets.map(b => {
+                                    const spentTotal = b.items.reduce((s, it) => s + it.amount, 0);
+                                    const hasLimit = b.limit > 0;
+                                    const pct = hasLimit ? Math.min((spentTotal / b.limit) * 100, 100) : 0;
+                                    const over = hasLimit && spentTotal > b.limit;
+                                    const near = hasLimit && !over && pct >= 80;
+                                    const barColor = over ? '#DC2626' : near ? '#D97706' : '#10B981';
+
+                                    return (
+                                        <div key={b.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #F3F4F6' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#374151' }}>
+                                                    {b.category || 'Unnamed'}
+                                                </span>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: over ? '#DC2626' : '#111827' }}>
+                                                    KES {fmt(spentTotal)}
+                                                    {hasLimit && <span style={{ fontWeight: 400, color: '#9CA3AF' }}> / {fmt(b.limit)}</span>}
+                                                </span>
+                                            </div>
+                                            <div style={{ height: 6, background: '#F3F4F6', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
+                                                <div style={{ height: '100%', width: `${hasLimit ? pct : 0}%`, background: barColor, borderRadius: 99, transition: 'width 0.3s ease' }} />
+                                            </div>
+                                            {hasLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>
+                                                        {over
+                                                            ? <span style={{ color: '#DC2626', fontWeight: 700 }}>Over by KES {fmt(spentTotal - b.limit)}</span>
+                                                            : `KES ${fmt(b.limit - spentTotal)} remaining`}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: barColor }}>{Math.round(pct)}%</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <div style={{ height: 6, background: '#F3F4F6', borderRadius: 99, overflow: 'hidden' }}>
-                                <div style={{
-                                    height: '100%', width: `${(item.value / maxExpense) * 100}%`,
-                                    background: item.color, borderRadius: 99, transition: 'width 0.3s ease',
-                                }} />
+                        )}
+
+                        {/* — Fixed Costs — */}
+                        {fixedBreakdownItems.length > 0 && (
+                            <div style={{ marginBottom: 24 }}>
+                                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Fixed Costs</p>
+                                {fixedBreakdownItems.map((item, i) => (
+                                    <div key={i} style={{ marginBottom: 12 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                            <span style={{ fontSize: '0.85rem', color: '#4B5563' }}>{item.label}</span>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
+                                                KES {fmt(item.value)}
+                                                {income > 0 && <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6 }}>{Math.round((item.value / income) * 100)}%</span>}
+                                            </span>
+                                        </div>
+                                        <div style={{ height: 6, background: '#F3F4F6', borderRadius: 99, overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${(item.value / maxFixed) * 100}%`, background: item.color, borderRadius: 99, transition: 'width 0.3s ease' }} />
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+                        )}
+
+                        {/* — One-off Expenses — */}
+                        {oneOffs.some(o => o.amount > 0) && (
+                            <div>
+                                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>One-off Expenses</p>
+                                {oneOffs.filter(o => o.amount > 0).map(o => (
+                                    <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
+                                        <span style={{ fontSize: '0.85rem', color: '#4B5563' }}>{o.label || 'Unlabelled'}</span>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>KES {fmt(o.amount)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* ── 8. SUBMIT ─────────────────────────────────────────────────── */}
             {!month.submitted ? (

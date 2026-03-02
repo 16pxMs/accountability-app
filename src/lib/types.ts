@@ -41,11 +41,36 @@ export interface WeekData {
     dailyLogs: Record<string, DayData>;
 }
 
+// ── categorical budget ────────────────────────────────────────────────────────
+export type BudgetCategoryKey = 'food' | 'transport' | 'personal' | 'social' | 'misc';
+
+export const BUDGET_CATEGORY_META: Record<BudgetCategoryKey, { label: string; icon: string }> = {
+    food:      { label: 'Food & Groceries',      icon: '🛒' },
+    transport: { label: 'Transport',              icon: '🚗' },
+    personal:  { label: 'Personal & Clothing',    icon: '👕' },
+    social:    { label: 'Social & Entertainment', icon: '🎉' },
+    misc:      { label: 'Miscellaneous',          icon: '📦' },
+};
+
 // ── one-off expense entry ────────────────────────────────────────────────────
 export interface OneOffExpense {
     id: string;
     label: string;
     amount: number; // KES
+}
+
+// ── flexible budget entry ─────────────────────────────────────────────────────
+export interface BudgetLineItem {
+    id: string;
+    label: string;
+    amount: number; // KES
+}
+
+export interface BudgetEntry {
+    id: string;
+    category: string;          // free-text label; preset or custom
+    limit: number;             // monthly budget limit (KES)
+    items: BudgetLineItem[];   // individual expense entries (replaces single spent)
 }
 
 // ── debt tracking ────────────────────────────────────────────────────────────
@@ -101,6 +126,7 @@ export interface MonthlyData {
     expenses?: MonthlyExpenses;
     oneOffs?: OneOffExpense[];
     debts?: DebtEntry[];                // debt obligations this month
+    budgets?: BudgetEntry[];            // flexible budget categories
 }
 
 export type MonthlyEntry = MonthlyData;
