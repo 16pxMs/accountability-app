@@ -323,10 +323,22 @@ export default function FinanceCard() {
         });
     };
 
-    const addBudget = () => persist({
+    const addBudget = () => {
+    const newBudgetId = Date.now().toString();
+    persist({
         ...month,
-        budgets: [...budgets, { id: Date.now().toString(), category: '', limit: 0, items: [] }],
-    });
+        budgets: [
+            ...budgets, 
+            { 
+                id: newBudgetId, 
+                category: '', 
+                limit: 0, 
+                // Adding the first item here by default
+                items: [{ id: `first-${newBudgetId}`, label: '', amount: 0 }] 
+            }
+             ],
+         });
+    };
 
     const updateBudget = (id: string, field: 'category' | 'limit', value: string | number) =>
         persist({ ...month, budgets: budgets.map(b => b.id === id ? { ...b, [field]: value } : b) });
@@ -793,7 +805,6 @@ export default function FinanceCard() {
                                     <p style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Total Spent</p>
                                     <div style={{
                                         padding: '8px 12px', borderRadius: 8, textAlign: 'right',
-                                        border: `1px solid ${over ? '#FCA5A5' : '#E5E7EB'}`,
                                         background: over ? '#FEF2F2' : '#F3F4F6',
                                         fontSize: '0.9rem', fontWeight: 700,
                                         color: over ? '#DC2626' : spentTotal > 0 ? '#111827' : '#9CA3AF',
