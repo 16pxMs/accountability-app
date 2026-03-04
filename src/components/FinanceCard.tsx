@@ -696,7 +696,7 @@ export default function FinanceCard() {
                         opacity: ((month.emergencyFund ?? 0) === 0 && (month.carFund ?? 0) === 0 && (month.travelFund ?? 0) === 0) ? 0.4 : 1,
                     }}
                 >
-                    {savingsSaved ? '✓ Saved to Dashboard' : '↑ Save Savings to Dashboard'}
+                    {savingsSaved ? '✓ Saved to Dashboard' : 'Save Savings to Dashboard'}
                 </button>
             </div>
 
